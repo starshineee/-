@@ -1,0 +1,195 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>zcc的租房小工具</title>
+    <link rel="shortcut icon" href="resources/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="resources/main1119.css" />
+    <link rel="stylesheet" href="resources/jquery.range.css" />
+    <script src="resources/jquery-1.9.1.js"></script>
+    <script src="resources/es5.min.js"></script>
+    <script src="http://webapi.amap.com/maps?v=1.4.8&key=1a7033febfc23fa51535d686ab2ff562&plugin=AMap.Driving,AMap.ArrivalRange,AMap.Scale,AMap.Geocoder,AMap.Transfer,AMap.Autocomplete"></script>
+    <script src="resources/jquery.range.js"></script>
+    <style>
+        .control-panel {
+            position: absolute;
+            top: 30px;
+            right: 20px;
+        }
+
+        .control-entry {
+            width: 400px;
+            background-color: rgba(119, 136, 153, 0.8);
+            font-family: fantasy, sans-serif;
+            text-align: left;
+            color: white;
+            overflow: auto;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .control-input {
+            margin-left: 120px;
+        }
+
+        .control-input input[type="text"] {
+            width: 160px;
+        }
+
+        .control-panel label {
+            float: left;
+            width: 120px;
+        }
+
+        #transfer-panel {
+            position: absolute;
+            background-color: white;
+            max-height: 80%;
+            overflow-y: auto;
+            top: 30px;
+            left: 20px;
+            width: 250px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container"></div>
+    <div class="control-panel">
+        <!-- <div class="control-entry">
+                <label>选择工作地点：</label>
+                <div class="control-input">
+                    <input id="work-location" type="text">
+                </div>
+            </div>
+            <div class="control-entry">
+                <label>选择通勤方式：</label>
+                <div class="control-input">
+                    <input type="radio" name="vehicle" value="SUBWAY,BUS" onClick="takeBus(this)" checked/> 公交+地铁
+                    <input type="radio" name="vehicle" value="SUBWAY" onClick="takeSubway(this)" /> 地铁
+                </div>
+            </div> -->
+        <div class="control-entry">
+            <label>导入房源文件：</label>
+            <div class="control-input">
+                <input type="file" name="file" onchange="importRentInfo(this)" />
+            </div>
+        </div>
+        <div class="control-entry">
+            <label>导入班车文件：</label>
+            <div class="control-input">
+                <input type="file" name="bus" onchange="importBusInfo(this)" />
+            </div>
+        </div>
+    </div>
+    <div id="transfer-panel"></div>
+    <script>
+        var rentMarkerArray = [];
+        var busRouteArray = [];
+        var map = new AMap.Map("container", {
+            resizeEnable: true,
+            zoomEnable: true,
+            center: [121.586883, 31.197304],
+            zoom: 13
+        });
+        function importRentInfo(fileInfo) {
+            var file = fileInfo.files[0].name;
+            loadRentLocationByFile(file);
+        }
+
+        function addMarkerByAddress(address,houseInfo) {
+            var geocoder = new AMap.Geocoder({
+                city: "上海",
+                radius: 1500
+            });
+            geocoder.getLocation(address, function (status, result) {
+                if (status === "complete" && result.info === 'OK') {
+                    var geocode = result.geocodes[0];
+
+                    rentMarker = new AMap.Marker({
+                        map: map,
+                        title: address+'\n'+houseInfo,
+                        icon: 'http://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+                        position: [geocode.location.getLng(), geocode.location.getLat()]
+                    });
+                    rentMarkerArray.push(rentMarker);
+                    rentMarker.on('click', function (e) {
+                        window.open("https://sh.lianjia.com/zufang/rs"+address);
+                    });
+                }
+
+            })
+        }
+        function delRentLocation() {
+            if (rentMarkerArray) map.remove(rentMarkerArray);
+            rentMarkerArray = [];
+        }
+        function loadRentLocationByFile(fileName) {
+            delRentLocation();
+            var rent_locations = new Array();
+            $.get(fileName, function (data) {
+                data = data.split("\n");
+                data.forEach(function (item, index) {
+                    var itemAry=item.split(",");
+                    if (rent_locations.hasOwnProperty(itemAry[1])) {
+                        rent_locations[itemAry[1]]+='\n'+itemAry[2]+'|'+itemAry[3]+'|'+itemAry[4];
+                    } else {
+                        rent_locations[itemAry[1]]=itemAry[2]+'|'+itemAry[3]+'|'+itemAry[4];
+                    }
+                });
+                for (var prop in rent_locations) {
+                    addMarkerByAddress(prop,rent_locations[prop]);
+                }
+            });
+        }
+
+        function importBusInfo(fileInfo) {
+            var file = fileInfo.files[0].name;
+            loadBusRouteByFile(file);
+        }
+
+        function delBusRoute() {
+            if (busRouteArray) map.remove(busRouteArray);
+            busRouteArray = [];
+        }
+        var p=[];
+        function loadBusRouteByFile(fileName) {
+            delBusRoute();
+            var bus_routes = new Set();
+            $.get(fileName, function (data) {
+                data = data.split("\n");
+                data.forEach(function (item, index) {
+                    bus_routes.add(item);
+                });
+                
+                bus_routes.forEach(function (route, index) {
+                    var rou = route.split('，');
+                    var driving = new AMap.Driving({
+                        map: map,
+                        // outlineColor:"red",
+                    });
+
+                    var points=[];
+                    rou.forEach(function(item,index){
+                        if(index){
+                            points.push({keyword:item,city:"上海"});
+                        }
+                    });
+                    p.push(points);
+                    driving.search(points);
+                    busRouteArray.push(driving);
+
+                    //sleep()
+                });
+            });
+        }
+
+
+
+
+    </script>
+</body>
+
+</html>
